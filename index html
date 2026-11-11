@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>撮影・人員スケジュール管理システム</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+        /* カスタムスクロールバー */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col">
+
+    <!-- ==================== パスワード認証モーダル ==================== -->
+    <div id="authModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 sm:p-8 transform transition-all">
+            <div class="text-center mb-6">
+                <div class="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
+                    <i class="fa-solid fa-lock"></i>
+                </div>
+                <h2 class="text-2xl font-bold text-slate-800">アクセス制限</h2>
+                <p class="text-slate-500 text-sm mt-1">パスワードを入力してログインしてください</p>
+            </div>
+            
+            <form id="loginForm" onsubmit="handleLogin(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-2">パスワード</label>
+                    <input type="password" id="passwordInput" required placeholder="パスワードを入力" 
+                           class="w-full px-4 py-3 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all text-slate-800">
+                    <p id="authError" class="text-red-500 text-xs mt-2 hidden"><i class="fa-solid fa-circle-exclamation mr-1"></i> パスワードが正しくありません</p>
+                </div>
+                <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-4 rounded-xl shadow-lg shadow-indigo-200 transition-all duration-200 flex items-center justify-center space-x-2">
+                    <span>ログイン</span>
+                    <i class="fa-solid fa-arrow-right text-sm"></i>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- ==================== メインアプリケーション ==================== -->
+    <div id="mainApp" class="hidden flex-col flex-grow">
+        
+        <!-- ナビゲーションヘッダー -->
+        <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between items-center h-16">
+                    <!-- アプリタイトル -->
+                    <div class="flex items-center space-x-3">
+                        <div class="bg-indigo-600 text-white p-2 rounded-lg shadow-sm">
+                            <i class="fa-solid fa-clapperboard text-xl"></i>
+                        </div>
+                        <div>
+                            <h1 class="font-bold text-lg leading-tight text-slate-900">撮影・人員スケジュール</h1>
+                            <p class="text-xs text-slate-500">管理 & タイムライン</p>
+                        </div>
+                    </div>
+
+                    <!-- タブ切り替え（メインリスト vs タイムライン） -->
+                    <nav class="flex space-x-2 bg-slate-100 p-1 rounded-xl">
+                        <button id="tabMainBtn" onclick="switchView('main')" class="flex items-center space-x-2 px-4 py-2 text-sm font-medium rounded-lg transition-all bg-white text-indigo-600 shadow-sm">
+                            <i class="fa-solid fa-table"></i>
+                            <span>スケジュール表</span>
+                        </button>
+                        <button id="tabTimelineBtn" onclick="switchView('timeline')" class="flex items-center space-x-2 px-4 py-2 text-sm font-medium rounded-lg transition-all text-slate-600 hover:text-slate-900">
+                            <i class="fa-solid fa-chart-gantt"></i>
+                            <span>個人別タイムライン</span>
+                        </button>
+                    </nav>
+
+                    <!-- アクション＆設定ボタン -->
+                    <div class="flex items-center space-x-2">
+                        <button onclick="changePasswordPrompt()" class="text-slate-500 hover:text-slate-700 p-2 rounded-lg hover:bg-slate-100 transition-all" title="パスワード変更">
+                            <i class="fa-solid fa-key"></i>
+                        </button>
+                        <button onclick="logout()" class="text-slate-500 hover:text-slate-700 p-2 rounded-lg hover:bg-slate-100 transition-all" title="ログアウト">
+                            <i class="fa-solid fa-right-from-bracket"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- メインコンテンツ領域 -->
+        <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+            <!-- ================= ビュー 1: メイン一覧表 ================= -->
+            <div id="mainView" class="space-y-4">
+                
+                <!-- ツールバー：モード切替 ＆ 追加・リセット操作 -->
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row justify-between items-center gap-4">
+                    
+                    <!-- モード切り替えスイッチ -->
+                    <div class="flex items-center space-x-3 bg-slate-50 p-1.5 border border-slate-200 rounded-xl">
+                        <span class="text-xs font-semibold px-2 text-slate-500 uppercase tracking-wider">モード:</span>
+                        <button id="btnViewMode" onclick="setMode('view')" class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-all bg-indigo-600 text-white shadow-sm">
+                            <i class="fa-regular fa-eye mr-1"></i> 閲覧モード
+                        </button>
+                        <button id="btnEditMode" onclick="setMode('edit')" class="px-3 py-1.5 text-xs font-semibold rounded-lg transition-all text-slate-600 hover:text-slate-900">
+                            <i class="fa-regular fa-pen-to-square mr-1"></i> 編集モード
+                        </button>
+                    </div>
+
+                    <!-- 編集アクションボタン -->
+                    <div class="flex items-center space-x-2 w-full sm:w-auto justify-end">
+                        <button onclick="addRowAtEnd()" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-medium text-xs px-3 py-2 rounded-lg transition-all border border-indigo-200 flex items-center space-x-1">
+                            <i class="fa-solid fa-plus"></i>
+                            <span>末尾に行を追加</span>
+                        </button>
+                        <button onclick="resetToSampleData()" class="text-slate-500 hover:text-red-600 hover:bg-red-50 text-xs px-3 py-2 rounded-lg transition-all border border-slate-200 flex items-center space-x-1" title="データ初期化">
+                            <i class="fa-solid fa-rotate-left"></i>
+                            <span class="hidden sm:inline">リセット</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 編集モードでの情報アラート -->
+                <div id="editNotice" class="hidden bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2.5 rounded-xl text-xs flex items-center space-x-2">
+                    <i class="fa-solid fa-circle-info text-amber-500 text-sm"></i>
+                    <span><strong>編集モード:</strong> 各セルを直接変更できます。途中に行を追加する場合は「＋」ボタンを使用してください。</span>
+                </div>
+
+                <!-- スケジュールテーブル -->
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
+                    <table class="w-full text-left border-collapse min-w-[800px]">
+                        <thead>
+                            <tr class="bg-slate-100 text-slate-600 text-xs uppercase tracking-wider border-b border-slate-200 select-none">
+                                <th class="py-3 px-4 font-semibold cursor-pointer hover:bg-slate-200 transition-colors w-28" onclick="sortByColumn('sceneNo')">
+                                    <div class="flex items-center justify-between">
+                                        <span>シーンNo.</span>
+                                        <span id="sortIcon-sceneNo" class="text-slate-400 text-xs"><i class="fa-solid fa-sort"></i></span>
+                                    </div>
+                                </th>
+                                <th class="py-3 px-4 font-semibold cursor-pointer hover:bg-slate-200 transition-colors" onclick="sortByColumn('location')">
+                                    <div class="flex items-center justify-between">
+                                        <span><i class="fa-solid fa-location-dot mr-1 text-slate-400"></i>場所</span>
+                                        <span id="sortIcon-location" class="text-slate-400 text-xs"><i class="fa-solid fa-sort"></i></span>
+                                    </div>
+                                </th>
+                                <th class="py-3 px-4 font-semibold cursor-pointer hover:bg-slate-200 transition-colors w-32" onclick="sortByColumn('date')">
+                                    <div class="flex items-center justify-between">
+                                        <span><i class="fa-regular fa-calendar mr-1 text-slate-400"></i>日にち</span>
+                                        <span id="sortIcon-date" class="text-slate-400 text-xs"><i class="fa-solid fa-sort"></i></span>
+                                    </div>
+                                </th>
+                                <th class="py-3 px-4 font-semibold cursor-pointer hover:bg-slate-200 transition-colors w-28" onclick="sortByColumn('startTime')">
+                                    <div class="flex items-center justify-between">
+                                        <span><i class="fa-regular fa-clock mr-1 text-slate-400"></i>開始時刻</span>
+                                        <span id="sortIcon-startTime" class="text-slate-400 text-xs"><i class="fa-solid fa-sort"></i></span>
+                                    </div>
+                                </th>
+                                <th class="py-3 px-4 font-semibold cursor-pointer hover:bg-slate-200 transition-colors w-28" onclick="sortByColumn('endTime')">
+                                    <div class="flex items-center justify-between">
+                                        <span><i class="fa-regular fa-clock mr-1 text-slate-400"></i>終了時刻</span>
+                                        <span id="sortIcon-endTime" class="text-slate-400 text-xs"><i class="fa-solid fa-sort"></i></span>
+                                    </div>
+                                </th>
+                                <th class="py-3 px-4 font-semibold cursor-pointer hover:bg-slate-200 transition-colors" onclick="sortByColumn('cast')">
+                                    <div class="flex items-center justify-between">
+                                        <span><i class="fa-solid fa-user-ninja mr-1 text-slate-400"></i>出演者</span>
+                                        <span id="sortIcon-cast" class="text-slate-400 text-xs"><i class="fa-solid fa-sort"></i></span>
+                                    </div>
+                                </th>
+                                <th class="py-3 px-4 font-semibold cursor-pointer hover:bg-slate-200 transition-colors" onclick="sortByColumn('crew')">
+                                    <div class="flex items-center justify-between">
+                                        <span><i class="fa-solid fa-video mr-1 text-slate-400"></i>裏方</span>
+                                        <span id="sortIcon-crew" class="text-slate-400 text-xs"><i class="fa-solid fa-sort"></i></span>
+                                    </div>
+                                </th>
+                                <th class="py-3 px-3 font-semibold text-center w-24 edit-col hidden">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="scheduleTableBody" class="divide-y divide-slate-200 text-sm">
+                            <!-- JS dynamically populates this -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ================= ビュー 2: 個人別タイムライン ================= -->
+            <div id="timelineView" class="hidden space-y-4">
+                
+                <!-- カレンダー ＆ コントロール -->
+                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4">
+                    <!-- カレンダーヘッダー -->
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-2">
+                            <i class="fa-regular fa-calendar-days text-indigo-600 text-lg"></i>
+                            <h3 id="calendarMonthLabel" class="font-bold text-slate-800 text-base">---</h3>
+                        </div>
+                        <div class="flex items-center space-x-1">
+                            <button onclick="changeCalendarMonth(-1)" class="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-all text-xs">
+                                <i class="fa-solid fa-chevron-left"></i> 前月
+                            </button>
+                            <button onclick="goCalendarToday()" class="px-2 py-1 rounded-lg text-xs font-semibold text-indigo-600 hover:bg-indigo-50 transition-all">
+                                今日
+                            </button>
+                            <button onclick="changeCalendarMonth(1)" class="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-all text-xs">
+                                次月 <i class="fa-solid fa-chevron-right"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 月間カレンダーグリッド -->
+                    <div class="bg-slate-50/50 p-2 rounded-xl border border-slate-200/60">
+                        <div class="grid grid-cols-7 gap-1 text-center text-[11px] font-semibold text-slate-400 mb-1">
+                            <div class="text-red-500">日</div>
+                            <div>月</div>
+                            <div>火</div>
+                            <div>水</div>
+                            <div>木</div>
+                            <div>金</div>
+                            <div class="text-indigo-500">土</div>
+                        </div>
+                        <div id="calendarDaysGrid" class="grid grid-cols-7 gap-1 text-center text-xs">
+                            <!-- JS dynamically populates days -->
+                        </div>
+                    </div>
+
+                    <!-- 情報・凡例バー -->
+                    <div class="flex flex-col sm:flex-row justify-between items-center gap-2 pt-2 border-t border-slate-100">
+                        <div class="text-xs text-slate-600 font-medium">
+                            選択中の日付: <span id="selectedDateDisplay" class="font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">未選択</span>
+                        </div>
+
+                        <!-- 凡例 (Legend) -->
+                        <div class="flex items-center space-x-4 text-xs font-medium">
+                            <div class="flex items-center space-x-1.5">
+                                <span class="w-3 h-3 rounded-full bg-indigo-500 inline-block"></span>
+                                <span class="text-slate-600">出演者</span>
+                            </div>
+                            <div class="flex items-center space-x-1.5">
+                                <span class="w-3 h-3 rounded-full bg-emerald-500 inline-block"></span>
+                                <span class="text-slate-600">裏方</span>
+                            </div>
+                            <div class="flex items-center space-x-1.5">
+                                <span class="w-3 h-3 rounded-full bg-amber-500 inline-block"></span>
+                                <span class="text-slate-600">重複（両方）</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- タイムライン表本体 -->
+                <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
+                    <div id="timelineContainer" class="min-w-[950px] p-4">
+                        <!-- JS dynamically builds Gantt timeline -->
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- JavaScript ロジック -->
+    <script>
+        // --- 状態管理 (State) ---
+        let appState = {
+            authenticated: false,
+            password: '1234',
+            currentView: 'main', // 'main' | 'timeline'
+            mode: 'view', // 'view' | 'edit'
+            sortField: null,
+            sortDirection: 'asc',
+            calendarYear: new Date().getFullYear(),
+            calendarMonth: new Date().getMonth(), // 0-indexed
+            selectedTimelineDate: new Date().toISOString().split('T')[0],
+            schedules: []
+        };
+
+        // サンプル初期データ
+        const defaultSchedules = [
+            { id: '1', sceneNo: 'Scene 1', location: 'スタジオA', date: '2026-11-15', startTime: '09:00', endTime: '11:30', cast: '山田太郎、佐藤花子', crew: '田中一郎(カメラ)、鈴木次郎(音声)' },
+            { id: '2', sceneNo: 'Scene 2', location: '屋外グラウンド', date: '2026-11-15', startTime: '11:45', endTime: '13:00', cast: '山田太郎、高橋健', crew: '田中一郎(カメラ)、伊藤三郎(照明)' },
+            { id: '3', sceneNo: 'Scene 3', location: '会議室B', date: '2026-11-15', startTime: '14:00', endTime: '17:00', cast: '佐藤花子、高橋健', crew: '鈴木次郎(音声)、伊藤三郎(照明)' },
+            { id: '4', sceneNo: 'Scene 4', location: 'スタジオA', date: '2026-11-16', startTime: '10:00', endTime: '12:00', cast: '山田太郎、佐藤花子、高橋健', crew: '田中一郎(カメラ)、鈴木次郎(音声)' }
+        ];
+
+        // --- 名前の分解（「、」や「,」に対応） ---
+        function parseNames(str) {
+            if (!str || !str.trim()) return [];
+            return str.split(/[、、,]/).map(s => s.trim()).filter(Boolean);
+        }
+
+        function saveToLocalStorage() {
+            localStorage.setItem('app_schedules', JSON.stringify(appState.schedules));
+            localStorage.setItem('app_password', appState.password);
+        }
+
+        function loadFromLocalStorage() {
+            const savedData = localStorage.getItem('app_schedules');
+            const savedPassword = localStorage.getItem('app_password');
+            
+            if (savedPassword) {
+                appState.password = savedPassword;
+            }
+            if (savedData) {
+                try {
+                    appState.schedules = JSON.parse(savedData);
+                } catch (e) {
+                    appState.schedules = [...defaultSchedules];
+                }
+            } else {
+                appState.schedules = [...defaultSchedules];
+            }
+        }
+
+        // --- 認証機能 ---
+        function handleLogin(e) {
+            e.preventDefault();
+            const inputVal = document.getElementById('passwordInput').value;
+            if (inputVal === appState.password) {
+                appState.authenticated = true;
+                document.getElementById('authModal').classList.add('hidden');
+                document.getElementById('mainApp').classList.remove('hidden');
+                document.getElementById('mainApp').classList.add('flex');
+                renderTable();
+            } else {
+                document.getElementById('authError').classList.remove('hidden');
+            }
+        }
+
+        function logout() {
+            appState.authenticated = false;
+            document.getElementById('passwordInput').value = '';
+            document.getElementById('authError').classList.add('hidden');
+            document.getElementById('mainApp').classList.add('hidden');
+            document.getElementById('mainApp').classList.remove('flex');
+            document.getElementById('authModal').classList.remove('hidden');
+        }
+
+        function changePasswordPrompt() {
+            const newPassword = prompt('新しいパスワードを入力してください:', appState.password);
+            if (newPassword && newPassword.trim() !== '') {
+                appState.password = newPassword.trim();
+                saveToLocalStorage();
+                alert('パスワードを変更しました');
+            }
+        }
+
+        // --- ビュー・モード切り替え ---
+        function switchView(viewName) {
+            appState.currentView = viewName;
+            const tabMainBtn = document.getElementById('tabMainBtn');
+            const tabTimelineBtn = document.getElementById('tabTimelineBtn');
+            const mainView = document.getElementById('mainView');
+            const timelineView = document.getElementById('timelineView');
+
+            if (viewName === 'main') {
+                mainView.classList.remove('hidden');
+                timelineView.classList.add('hidden');
+                
+                tabMainBtn.className = "flex items-center space-x-2 px-4 py-2 text-sm font-medium rounded-lg transition-all bg-white text-indigo-600 shadow-sm";
+                tabTimelineBtn.className = "flex items-center space-x-2 px-4 py-2 text-sm font-medium rounded-lg transition-all text-slate-600 hover:text-slate-900";
+                renderTable();
+            } else {
+                mainView.classList.add('hidden');
+                timelineView.classList.remove('hidden');
+
+                tabTimelineBtn.className = "flex items-center space-x-2 px-4 py-2 text-sm font-medium rounded-lg transition-all bg-white text-indigo-600 shadow-sm";
+                tabMainBtn.className = "flex items-center space-x-2 px-4 py-2 text-sm font-medium rounded-lg transition-all text-slate-600 hover:text-slate-900";
+                
+                // 初回日付設定の連動
+                const dates = [...new Set(appState.schedules.map(s => s.date).filter(Boolean))].sort();
+                if (dates.length > 0 && !dates.includes(appState.selectedTimelineDate)) {
+                    appState.selectedTimelineDate = dates[0];
+                }
+                if (appState.selectedTimelineDate) {
+                    const [y, m] = appState.selectedTimelineDate.split('-').map(Number);
+                    if (y && m) {
+                        appState.calendarYear = y;
+                        appState.calendarMonth = m - 1;
+                    }
+                }
+                renderCalendar();
+                renderTimeline();
+            }
+        }
+
+        function setMode(mode) {
+            appState.mode = mode;
+            const btnView = document.getElementById('btnViewMode');
+            const btnEdit = document.getElementById('btnEditMode');
+            const editNotice = document.getElementById('editNotice');
+
+            if (mode === 'edit') {
+                btnEdit.className = "px-3 py-1.5 text-xs font-semibold rounded-lg transition-all bg-indigo-600 text-white shadow-sm";
+                btnView.className = "px-3 py-1.5 text-xs font-semibold rounded-lg transition-all text-slate-600 hover:text-slate-900";
+                editNotice.classList.remove('hidden');
+            } else {
+                btnView.className = "px-3 py-1.5 text-xs font-semibold rounded-lg transition-all bg-indigo-600 text-white shadow-sm";
+                btnEdit.className = "px-3 py-1.5 text-xs font-semibold rounded-lg transition-all text-slate-600 hover:text-slate-900";
+                editNotice.classList.add('hidden');
+            }
+            renderTable();
+        }
+
+        // --- ソート処理 ---
+        function sortByColumn(field) {
+            if (appState.sortField === field) {
+                if (appState.sortDirection === 'asc') {
+                    appState.sortDirection = 'desc';
+                } else {
+                    appState.sortField = null;
+                    appState.sortDirection = 'asc';
+                }
+            } else {
+                appState.sortField = field;
+                appState.sortDirection = 'asc';
+            }
+            updateSortIcons();
+            renderTable();
+        }
+
+        function updateSortIcons() {
+            const fields = ['sceneNo', 'location', 'date', 'startTime', 'endTime', 'cast', 'crew'];
+            fields.forEach(f => {
+                const iconSpan = document.getElementById(`sortIcon-${f}`);
+                if (!iconSpan) return;
+                if (appState.sortField === f) {
+                    if (appState.sortDirection === 'asc') {
+                        iconSpan.innerHTML = '<i class="fa-solid fa-sort-up text-indigo-600"></i>';
+                    } else {
+                        iconSpan.innerHTML = '<i class="fa-solid fa-sort-down text-indigo-600"></i>';
+                    }
+                } else {
+                    iconSpan.innerHTML = '<i class="fa-solid fa-sort text-slate-300"></i>';
+                }
+            });
+        }
+
+        function getSortedSchedules() {
+            let list = [...appState.schedules];
+            if (!appState.sortField) return list;
+
+            const field = appState.sortField;
+            const dir = appState.sortDirection === 'asc' ? 1 : -1;
+
+            list.sort((a, b) => {
+                let valA = a[field] || '';
+                let valB = b[field] || '';
+                return valA.localeCompare(valB, 'ja', { numeric: true }) * dir;
+            });
+            return list;
+        }
+
+        // --- テーブル描画 ---
+        function renderTable() {
+            const tbody = document.getElementById('scheduleTableBody');
+            tbody.innerHTML = '';
+
+            const isEdit = appState.mode === 'edit';
+            const editCols = document.querySelectorAll('.edit-col');
+            editCols.forEach(el => el.classList.toggle('hidden', !isEdit));
+
+            const list = getSortedSchedules();
+
+            list.forEach((item) => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-50/80 transition-colors";
+
+                if (isEdit) {
+                    tr.innerHTML = `
+                        <td class="py-2 px-3"><input type="text" value="${escapeHtml(item.sceneNo)}" onchange="updateRow('${item.id}', 'sceneNo', this.value)" class="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 font-semibold text-indigo-600"></td>
+                        <td class="py-2 px-3"><input type="text" value="${escapeHtml(item.location)}" onchange="updateRow('${item.id}', 'location', this.value)" class="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"></td>
+                        <td class="py-2 px-3"><input type="date" value="${escapeHtml(item.date)}" onchange="updateRow('${item.id}', 'date', this.value)" class="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"></td>
+                        <td class="py-2 px-3"><input type="time" value="${escapeHtml(item.startTime)}" onchange="updateRow('${item.id}', 'startTime', this.value)" class="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"></td>
+                        <td class="py-2 px-3"><input type="time" value="${escapeHtml(item.endTime)}" onchange="updateRow('${item.id}', 'endTime', this.value)" class="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"></td>
+                        <td class="py-2 px-3"><input type="text" value="${escapeHtml(item.cast)}" placeholder="氏名、「、」区切り" onchange="updateRow('${item.id}', 'cast', this.value)" class="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"></td>
+                        <td class="py-2 px-3"><input type="text" value="${escapeHtml(item.crew)}" placeholder="氏名(役割)、「、」区切り" onchange="updateRow('${item.id}', 'crew', this.value)" class="w-full px-2 py-1 text-xs border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500"></td>
+                        <td class="py-2 px-3 text-center edit-col space-x-1">
+                            <button onclick="insertRowAfter('${item.id}')" class="text-indigo-600 hover:text-indigo-800 p-1 rounded hover:bg-indigo-50" title="下に1行挿入"><i class="fa-solid fa-plus"></i></button>
+                            <button onclick="deleteRow('${item.id}')" class="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50" title="削除"><i class="fa-regular fa-trash-can"></i></button>
+                        </td>
+                    `;
+                } else {
+                    const castBadges = parseNames(item.cast).map(c => `<span class="inline-block bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] px-1.5 py-0.5 rounded mr-1 mb-1 font-medium">${escapeHtml(c)}</span>`).join('');
+                    const crewBadges = parseNames(item.crew).map(c => `<span class="inline-block bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] px-1.5 py-0.5 rounded mr-1 mb-1 font-medium">${escapeHtml(c)}</span>`).join('');
+
+                    tr.innerHTML = `
+                        <td class="py-3 px-4 font-bold text-indigo-600">${escapeHtml(item.sceneNo)}</td>
+                        <td class="py-3 px-4 font-medium text-slate-800">${escapeHtml(item.location)}</td>
+                        <td class="py-3 px-4 text-slate-600">${escapeHtml(item.date)}</td>
+                        <td class="py-3 px-4 text-slate-600 font-mono text-xs">${escapeHtml(item.startTime)}</td>
+                        <td class="py-3 px-4 text-slate-600 font-mono text-xs">${escapeHtml(item.endTime)}</td>
+                        <td class="py-3 px-4">${castBadges || '<span class="text-slate-300">-</span>'}</td>
+                        <td class="py-3 px-4">${crewBadges || '<span class="text-slate-300">-</span>'}</td>
+                    `;
+                }
+                tbody.appendChild(tr);
+            });
+        }
+
+        // --- データ操作 ---
+        function updateRow(id, field, value) {
+            const target = appState.schedules.find(s => s.id === id);
+            if (target) {
+                target[field] = value;
+                saveToLocalStorage();
+            }
+        }
+
+        function addRowAtEnd() {
+            const newId = Date.now().toString();
+            const nextNo = appState.schedules.length + 1;
+            appState.schedules.push({
+                id: newId,
+                sceneNo: `Scene ${nextNo}`,
+                location: '',
+                date: new Date().toISOString().split('T')[0],
+                startTime: '09:00',
+                endTime: '10:00',
+                cast: '',
+                crew: ''
+            });
+            saveToLocalStorage();
+            renderTable();
+        }
+
+        function insertRowAfter(id) {
+            const idx = appState.schedules.findIndex(s => s.id === id);
+            if (idx !== -1) {
+                const newId = Date.now().toString();
+                const newRow = {
+                    id: newId,
+                    sceneNo: `Scene ${appState.schedules.length + 1}`,
+                    location: '',
+                    date: appState.schedules[idx].date || new Date().toISOString().split('T')[0],
+                    startTime: '09:00',
+                    endTime: '10:00',
+                    cast: '',
+                    crew: ''
+                };
+                appState.schedules.splice(idx + 1, 0, newRow);
+                saveToLocalStorage();
+                renderTable();
+            }
+        }
+
+        function deleteRow(id) {
+            if (confirm('この行を削除してもよろしいですか？')) {
+                appState.schedules = appState.schedules.filter(s => s.id !== id);
+                saveToLocalStorage();
+                renderTable();
+            }
+        }
+
+        function resetToSampleData() {
+            if (confirm('全データを初期状態にリセットしてもよろしいですか？')) {
+                appState.schedules = JSON.parse(JSON.stringify(defaultSchedules));
+                saveToLocalStorage();
+                renderTable();
+            }
+        }
+
+        // --- カレンダー描画・操作 ---
+        function renderCalendar() {
+            const monthLabel = document.getElementById('calendarMonthLabel');
+            const grid = document.getElementById('calendarDaysGrid');
+            const selectedDisplay = document.getElementById('selectedDateDisplay');
+
+            const year = appState.calendarYear;
+            const month = appState.calendarMonth;
+
+            monthLabel.textContent = `${year}年${month + 1}月`;
+            selectedDisplay.textContent = appState.selectedTimelineDate || '未選択';
+
+            grid.innerHTML = '';
+
+            // スケジュールが存在する日付の一覧（ドット表示用）
+            const activeDates = new Set(appState.schedules.map(s => s.date).filter(Boolean));
+
+            const firstDayIndex = new Date(year, month, 1).getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+            // 前月分の埋め草
+            for (let i = 0; i < firstDayIndex; i++) {
+                const emptyCell = document.createElement('div');
+                emptyCell.className = "py-2 text-slate-300 text-center select-none opacity-20";
+                grid.appendChild(emptyCell);
+            }
+
+            // 当月の日付
+            const todayStr = new Date().toISOString().split('T')[0];
+
+            for (let d = 1; d <= daysInMonth; d++) {
+                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                const cell = document.createElement('button');
+                
+                const isSelected = dateStr === appState.selectedTimelineDate;
+                const isToday = dateStr === todayStr;
+                const hasSchedule = activeDates.has(dateStr);
+
+                let baseStyles = "py-1.5 px-1 rounded-lg text-center transition-all flex flex-col items-center justify-center relative ";
+
+                if (isSelected) {
+                    baseStyles += "bg-indigo-600 text-white font-bold shadow-md shadow-indigo-200 ";
+                } else if (isToday) {
+                    baseStyles += "bg-indigo-50 text-indigo-700 font-bold border border-indigo-200 hover:bg-indigo-100 ";
+                } else {
+                    baseStyles += "hover:bg-slate-100 text-slate-700 ";
+                }
+
+                cell.className = baseStyles;
+                cell.onclick = () => selectCalendarDate(dateStr);
+
+                let content = `<span>${d}</span>`;
+                if (hasSchedule) {
+                    const dotColor = isSelected ? 'bg-white' : 'bg-indigo-500';
+                    content += `<span class="w-1.5 h-1.5 rounded-full ${dotColor} mt-0.5"></span>`;
+                } else {
+                    content += `<span class="w-1.5 h-1.5 opacity-0 mt-0.5"></span>`;
+                }
+
+                cell.innerHTML = content;
+                grid.appendChild(cell);
+            }
+        }
+
+        function selectCalendarDate(dateStr) {
+            appState.selectedTimelineDate = dateStr;
+            renderCalendar();
+            renderTimeline();
+        }
+
+        function changeCalendarMonth(delta) {
+            appState.calendarMonth += delta;
+            if (appState.calendarMonth < 0) {
+                appState.calendarMonth = 11;
+                appState.calendarYear--;
+            } else if (appState.calendarMonth > 11) {
+                appState.calendarMonth = 0;
+                appState.calendarYear++;
+            }
+            renderCalendar();
+        }
+
+        function goCalendarToday() {
+            const now = new Date();
+            appState.calendarYear = now.getFullYear();
+            appState.calendarMonth = now.getMonth();
+            appState.selectedTimelineDate = now.toISOString().split('T')[0];
+            renderCalendar();
+            renderTimeline();
+        }
+
+        function timeToMinutes(timeStr) {
+            if (!timeStr) return 0;
+            const [h, m] = timeStr.split(':').map(Number);
+            return (h || 0) * 60 + (m || 0);
+        }
+
+        function renderTimeline() {
+            const container = document.getElementById('timelineContainer');
+            const selectedDate = appState.selectedTimelineDate;
+
+            container.innerHTML = '';
+
+            if (!selectedDate) {
+                container.innerHTML = '<div class="text-center text-slate-400 py-8">カレンダーから日付を選択してください</div>';
+                return;
+            }
+
+            // 対象日のデータ抽出
+            const daySchedules = appState.schedules.filter(s => s.date === selectedDate);
+
+            // 対象日のすべての出演者・裏方を重複なくリストアップ
+            const peopleMap = new Map(); // name -> { isCast: bool, isCrew: bool }
+
+            daySchedules.forEach(s => {
+                parseNames(s.cast).forEach(name => {
+                    if (!peopleMap.has(name)) peopleMap.set(name, { isCast: true, isCrew: false });
+                    else peopleMap.get(name).isCast = true;
+                });
+                parseNames(s.crew).forEach(name => {
+                    if (!peopleMap.has(name)) peopleMap.set(name, { isCast: false, isCrew: true });
+                    else peopleMap.get(name).isCrew = true;
+                });
+            });
+
+            const people = Array.from(peopleMap.keys());
+
+            if (people.length === 0) {
+                container.innerHTML = `<div class="text-center text-slate-400 py-12"><i class="fa-regular fa-calendar-xmark text-3xl mb-2 text-slate-300 block"></i>${selectedDate} のスケジュールはありません</div>`;
+                return;
+            }
+
+            // タイムライン時間幅の計算 (07:00〜21:00)
+            let minMin = 7 * 60;
+            let maxMin = 21 * 60;
+
+            daySchedules.forEach(s => {
+                const start = timeToMinutes(s.startTime);
+                const end = timeToMinutes(s.endTime);
+                if (start < minMin && start > 0) minMin = Math.floor(start / 60) * 60;
+                if (end > maxMin) maxMin = Math.ceil(end / 60) * 60;
+            });
+
+            const totalMinutes = maxMin - minMin;
+
+            // ガントチャートHTMLの構築
+            let html = `
+                <div class="flex border-b border-slate-200 pb-2 mb-2 text-xs font-semibold text-slate-500">
+                    <div class="w-40 flex-shrink-0 pr-2">人物 (役目)</div>
+                    <div class="flex-grow relative h-6">
+            `;
+
+            // 時間目盛りの描画
+            for (let m = minMin; m <= maxMin; m += 60) {
+                const left = ((m - minMin) / totalMinutes) * 100;
+                const hourStr = `${Math.floor(m / 60)}:00`;
+                html += `<div class="absolute top-0 transform -translate-x-1/2 text-[10px] text-slate-400" style="left: ${left}%">${hourStr}</div>`;
+            }
+
+            html += `
+                    </div>
+                </div>
+                <div class="space-y-3 relative">
+            `;
+
+            // 各人物ごとの行
+            people.forEach(person => {
+                const roles = peopleMap.get(person);
+                let roleTag = '';
+                if (roles.isCast && roles.isCrew) roleTag = '<span class="text-[10px] bg-amber-100 text-amber-800 px-1 py-0.2 rounded ml-1">両方</span>';
+                else if (roles.isCast) roleTag = '<span class="text-[10px] bg-indigo-100 text-indigo-700 px-1 py-0.2 rounded ml-1">出演</span>';
+                else if (roles.isCrew) roleTag = '<span class="text-[10px] bg-emerald-100 text-emerald-700 px-1 py-0.2 rounded ml-1">裏方</span>';
+
+                html += `
+                    <div class="flex items-center group hover:bg-slate-50/50 rounded-lg py-1 transition-colors">
+                        <div class="w-40 flex-shrink-0 font-medium text-xs text-slate-700 truncate pr-2" title="${escapeHtml(person)}">
+                            ${escapeHtml(person)} ${roleTag}
+                        </div>
+                        <div class="flex-grow relative h-9 bg-slate-100 rounded-lg overflow-hidden border border-slate-200/60">
+                `;
+
+                // 時間帯グリッド線（背景）
+                for (let m = minMin + 60; m < maxMin; m += 60) {
+                    const left = ((m - minMin) / totalMinutes) * 100;
+                    html += `<div class="absolute top-0 bottom-0 border-r border-slate-200/50" style="left: ${left}%"></div>`;
+                }
+
+                // 人物に関連するシーンブロックの配置
+                daySchedules.forEach(s => {
+                    const castList = parseNames(s.cast);
+                    const crewList = parseNames(s.crew);
+                    const isCast = castList.includes(person);
+                    const isCrew = crewList.includes(person);
+
+                    if (isCast || isCrew) {
+                        const start = timeToMinutes(s.startTime);
+                        const end = timeToMinutes(s.endTime);
+                        if (end <= start) return;
+
+                        const left = Math.max(0, ((start - minMin) / totalMinutes) * 100);
+                        const width = Math.min(100 - left, ((end - start) / totalMinutes) * 100);
+
+                        let bgColor = 'bg-indigo-500 border-indigo-600';
+                        let roleLabel = '出演';
+                        if (isCast && isCrew) {
+                            bgColor = 'bg-amber-500 border-amber-600';
+                            roleLabel = '出演/裏方';
+                        } else if (isCrew) {
+                            bgColor = 'bg-emerald-500 border-emerald-600';
+                            roleLabel = '裏方';
+                        }
+
+                        html += `
+                            <div class="absolute top-1 bottom-1 rounded-md text-white text-[10px] px-2 flex items-center justify-between shadow-sm overflow-hidden whitespace-nowrap border ${bgColor} transition-transform hover:scale-[1.01] hover:z-10 cursor-pointer"
+                                 style="left: ${left}%; width: ${width}%;"
+                                 title="${escapeHtml(s.sceneNo)} / ${escapeHtml(s.location)} (${s.startTime} - ${s.endTime}) [${roleLabel}]">
+                                <span class="font-bold truncate mr-1">${escapeHtml(s.sceneNo)}</span>
+                                <span class="opacity-90 truncate text-[9px] hidden sm:inline">${escapeHtml(s.location)} (${roleLabel})</span>
+                            </div>
+                        `;
+                    }
+                });
+
+                html += `
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `</div>`;
+            container.innerHTML = html;
+        }
+
+        // --- エスケープ処理 ---
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        // --- アプリ初期化 ---
+        window.onload = function() {
+            loadFromLocalStorage();
+        };
+    </script>
+</body>
+</html>
